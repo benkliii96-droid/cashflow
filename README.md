@@ -1,93 +1,44 @@
 # Cashflow
 
-Личный учёт доходов и расходов. Pet-project для портфолио fullstack-разработчика.
+Учёт доходов и расходов. Без авторизации.
 
-Без регистрации: открыл — сразу работаешь. Категории создаются при первой миграции (зарплата, продукты, транспорт и т.д.), можно добавлять свои.
+**Стек:** Django + DRF, React + TypeScript + Vite, SQLite
 
-## Стек
+## Функции
 
-| Слой | Технологии |
-|------|------------|
-| Backend | Python, Django, Django REST Framework, SQLite |
-| Frontend | React, TypeScript, Vite |
-| API | REST JSON |
+- категории (доход / расход), сидятся при migrate
+- операции: сумма, дата, комментарий
+- сводка: доход, расход, баланс
+- фильтр истории
 
-## Что умеет
+## Прокси
 
-- категории доходов и расходов (создание / удаление)
-- операции: сумма, дата, комментарий, привязка к категории
-- сводка: доход / расход / баланс
-- фильтр истории по типу
-
-## Как устроен прокси
-
-Vite проксирует запросы фронта на Django:
-
-```
-браузер → http://127.0.0.1:5173/api/...
-              ↓ (vite proxy)
-         http://127.0.0.1:8000/api/...
-```
-
-Настройка в `frontend/vite.config.ts`:
+`frontend/vite.config.ts`:
 
 ```ts
 proxy: { '/api': 'http://127.0.0.1:8000' }
 ```
 
-То есть backend должен слушать **порт 8000** (стандартный `runserver`).
+Фронт ходит на `/api/*` → Vite проксирует на Django `:8000`.
 
 ## Запуск
 
-Нужны: Python 3.11+, Node.js 18+.
-
-**1. Backend** (из корня репозитория):
-
 ```bash
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-# source .venv/bin/activate
-
+# backend
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
-```
 
-Backend: `http://127.0.0.1:8000`
-
-**2. Frontend** (второй терминал):
-
-```bash
+# frontend (второй терминал)
 cd frontend
 npm install
 npm run dev
 ```
 
-**3. Открыть в браузере**
+Открыть URL из вывода Vite (`Local:`), обычно `http://127.0.0.1:5173`.
 
-Смотри URL в терминале Vite. Обычно это:
-
-```
-http://127.0.0.1:5173/
-```
-
-Если 5173 занят, Vite сам возьмёт следующий свободный порт — открой тот, что напечатан в консоли (`Local: http://127.0.0.1:XXXX/`).
-
-## API (кратко)
+## API
 
 - `GET/POST /api/categories/`
 - `GET/POST /api/transactions/`
 - `GET /api/summary/`
-
-## Структура
-
-```
-cashflow/
-  config/          # Django settings
-  finance/         # модели, API
-  frontend/        # React-приложение
-  manage.py
-  requirements.txt
-```
