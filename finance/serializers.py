@@ -1,21 +1,6 @@
-from django.contrib.auth.models import User
 from rest_framework import serializers
 
 from .models import Category, Transaction
-
-
-class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=6)
-
-    class Meta:
-        model = User
-        fields = ('id', 'username', 'password')
-
-    def create(self, validated_data):
-        return User.objects.create_user(
-            username=validated_data['username'],
-            password=validated_data['password'],
-        )
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -42,9 +27,3 @@ class TransactionSerializer(serializers.ModelSerializer):
             'created_at',
         )
         read_only_fields = ('id', 'created_at', 'category_name', 'kind')
-
-    def validate_category(self, category):
-        request = self.context['request']
-        if category.user_id != request.user.id:
-            raise serializers.ValidationError('Category not found.')
-        return category

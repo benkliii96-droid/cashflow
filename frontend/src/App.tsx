@@ -1,26 +1,19 @@
-import { FormEvent, useEffect, useState } from 'react'
-import api, { Category, Summary, Transaction } from './api'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import api from './api'
+import type { Category, Summary, Transaction } from './api'
 import './App.css'
 
-type Mode = 'login' | 'register'
-
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('access'))
-  const [mode, setMode] = useState<Mode>('login')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-
   const [summary, setSummary] = useState<Summary | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
-
   const [catName, setCatName] = useState('')
   const [catKind, setCatKind] = useState<'income' | 'expense'>('expense')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [categoryId, setCategoryId] = useState<number | ''>('')
   const [occurredAt, setOccurredAt] = useState(new Date().toISOString().slice(0, 10))
+  const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all')
 
   async function loadData() {
     const [s, c, t] = await Promise.all([
@@ -31,39 +24,24 @@ function App() {
     setSummary(s.data)
     setCategories(c.data)
     setTransactions(t.data)
-    if (c.data.length && categoryId === '') {
-      setCategoryId(c.data[0].id)
-    }
+    setCategoryId((prev) => prev || (c.data[0]?.id ?? ''))
   }
 
   useEffect(() => {
-    if (!token) return
-    loadData().catch(() => {
-      localStorage.removeItem('access')
-      setToken(null)
-    })
-  }, [token])
+    loadData().catch(console.error)
+  }, [])
 
-  async function onAuth(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    try {
-      if (mode === 'register') {
-        await api.post('/auth/register/', { username, password })
-      }
-      const { data } = await api.post('/auth/login/', { username, password })
-      localStorage.setItem('access', data.access)
-      setToken(data.access)
-    } catch {
-      setError('Не удалось войти. Проверь логин/пароль.')
-    }
-  }
+  const visible = useMemo(
+    () => (filter === 'all' ? transactions : transactions.filter((t) => t.kind === filter)),
+    [transactions, filter],
+  )
 
   async function addCategory(e: FormEvent) {
     e.preventDefault()
-    await api.post('/categories/', { name: catName, kind: catKind })
+    const { data } = await api.post<Category>('/categories/', { name: catName, kind: catKind })
     setCatName('')
     await loadData()
+    setCategoryId(data.id)
   }
 
   async function addTransaction(e: FormEvent) {
@@ -80,104 +58,71 @@ function App() {
     await loadData()
   }
 
-  function logout() {
-    localStorage.removeItem('access')
-    setToken(null)
+  async function removeCategory(id: number) {
+    await api.delete(`/categories/${id}/`)
+    await loadData()
   }
 
-  if (!token) {
-    return (
-      <div className="shell">
-        <div className="card auth">
-          <h1>Cashflow</h1>
-          <p className="muted">Учёт доходов и расходов · Django + React</p>
-          <div className="tabs">
-            <button
-              className={mode === 'login' ? 'active' : ''}
-              onClick={() => setMode('login')}
-              type="button"
-            >
-              Вход
-            </button>
-            <button
-              className={mode === 'register' ? 'active' : ''}
-              onClick={() => setMode('register')}
-              type="button"
-            >
-              Регистрация
-            </button>
-          </div>
-          <form onSubmit={onAuth}>
-            <label>
-              Логин
-              <input value={username} onChange={(e) => setUsername(e.target.value)} required />
-            </label>
-            <label>
-              Пароль
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-            </label>
-            {error && <p className="error">{error}</p>}
-            <button type="submit">{mode === 'login' ? 'Войти' : 'Создать аккаунт'}</button>
-          </form>
-        </div>
-      </div>
-    )
+  async function removeTransaction(id: number) {
+    await api.delete(`/transactions/${id}/`)
+    await loadData()
   }
 
   return (
-    <div className="shell">
-      <header className="top">
-        <div>
-          <h1>Cashflow</h1>
-          <p className="muted">Личный учёт финансов</p>
-        </div>
-        <button type="button" className="ghost" onClick={logout}>
-          Выйти
-        </button>
+    <div className="page">
+      <div className="ledger-grid" aria-hidden />
+      <header className="hero">
+        <p className="eyebrow">personal ledger</p>
+        <h1>Cashflow</h1>
+        <p className="lead">Доходы, расходы и категории — без лишнего входа.</p>
       </header>
 
       <section className="stats">
-        <div className="stat">
-          <span>Доходы</span>
-          <strong>{summary?.income ?? '—'}</strong>
-        </div>
-        <div className="stat">
-          <span>Расходы</span>
-          <strong>{summary?.expense ?? '—'}</strong>
-        </div>
-        <div className="stat accent">
+        <article>
+          <span>Доход</span>
+          <strong className="plus">{summary?.income ?? '0.00'}</strong>
+        </article>
+        <article>
+          <span>Расход</span>
+          <strong className="minus">{summary?.expense ?? '0.00'}</strong>
+        </article>
+        <article className="balance">
           <span>Баланс</span>
-          <strong>{summary?.balance ?? '—'}</strong>
-        </div>
+          <strong>{summary?.balance ?? '0.00'}</strong>
+        </article>
       </section>
 
-      <div className="grid">
-        <form className="card" onSubmit={addCategory}>
-          <h2>Категория</h2>
+      <div className="layout">
+        <form className="panel" onSubmit={addCategory}>
+          <h2>Категории</h2>
+          <div className="chips">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`chip ${c.kind}`}
+                onClick={() => setCategoryId(c.id)}
+              >
+                <span>{c.name}</span>
+                <em onClick={(e) => { e.stopPropagation(); removeCategory(c.id) }}>×</em>
+              </button>
+            ))}
+          </div>
           <label>
-            Название
+            Новая категория
             <input value={catName} onChange={(e) => setCatName(e.target.value)} required />
           </label>
           <label>
             Тип
-            <select
-              value={catKind}
-              onChange={(e) => setCatKind(e.target.value as 'income' | 'expense')}
-            >
+            <select value={catKind} onChange={(e) => setCatKind(e.target.value as 'income' | 'expense')}>
               <option value="expense">Расход</option>
               <option value="income">Доход</option>
             </select>
           </label>
-          <button type="submit">Добавить</button>
+          <button type="submit" className="primary">Добавить категорию</button>
         </form>
 
-        <form className="card" onSubmit={addTransaction}>
+        <form className="panel" onSubmit={addTransaction}>
           <h2>Операция</h2>
           <label>
             Категория
@@ -186,61 +131,63 @@ function App() {
               onChange={(e) => setCategoryId(Number(e.target.value))}
               required
             >
+              {categories.length === 0 && <option value="">Сначала добавь категорию</option>}
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.kind === 'income' ? 'доход' : 'расход'})
+                  {c.name} · {c.kind === 'income' ? 'доход' : 'расход'}
                 </option>
               ))}
             </select>
           </label>
-          <label>
-            Сумма
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Дата
-            <input
-              type="date"
-              value={occurredAt}
-              onChange={(e) => setOccurredAt(e.target.value)}
-              required
-            />
-          </label>
+          <div className="two">
+            <label>
+              Сумма
+              <input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+            </label>
+            <label>
+              Дата
+              <input type="date" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} required />
+            </label>
+          </div>
           <label>
             Комментарий
-            <input value={note} onChange={(e) => setNote(e.target.value)} />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="опционально" />
           </label>
-          <button type="submit">Сохранить</button>
+          <button type="submit" className="primary" disabled={!categories.length}>Записать</button>
         </form>
       </div>
 
-      <section className="card">
-        <h2>История</h2>
+      <section className="panel wide">
+        <div className="table-head">
+          <h2>История</h2>
+          <div className="filters">
+            {(['all', 'income', 'expense'] as const).map((f) => (
+              <button key={f} type="button" className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>
+                {f === 'all' ? 'Все' : f === 'income' ? 'Доход' : 'Расход'}
+              </button>
+            ))}
+          </div>
+        </div>
         <table>
           <thead>
             <tr>
               <th>Дата</th>
               <th>Категория</th>
-              <th>Тип</th>
               <th>Сумма</th>
-              <th>Комментарий</th>
+              <th>Заметка</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {transactions.map((t) => (
+            {visible.map((t) => (
               <tr key={t.id}>
                 <td>{t.occurred_at}</td>
                 <td>{t.category_name}</td>
-                <td>{t.kind === 'income' ? 'доход' : 'расход'}</td>
                 <td className={t.kind}>{t.amount}</td>
                 <td>{t.note || '—'}</td>
+                <td>
+                  <button type="button" className="ghost" onClick={() => removeTransaction(t.id)}>удалить</button>
+                </td>
               </tr>
             ))}
           </tbody>
